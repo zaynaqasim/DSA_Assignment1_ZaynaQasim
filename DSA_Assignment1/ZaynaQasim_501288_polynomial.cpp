@@ -4,191 +4,187 @@
 #include <stdexcept>
 #include <iostream>
 #include <limits>
+#include <cmath>
 
 using namespace std;
 
-/*
-   The header file does not allow us to store members directly.
-   To work around this, we use a hidden implementation (PolyImpl)
-   managed through a static map that links each Polynomial object
-   to its internal storage.
-
-   - Storage: map<int, int> terms   (exponent to coefficient)
-   - Advantages: easy to merge like terms, sorted order guaranteed
-   - Hidden: users of Polynomial never see this structure
-*/
-struct PolyImpl {
-    map<int, int> terms; //each key=exponent, value=coefficient
+//Node class for linked list
+class Node {
+public:
+    int coef;
+    int exp;
+    Node* next;
+    Node(int c, int e) : coef(c), exp(e), next(nullptr) {}
 };
 
-//Global map: each Polynomial* to its private PolyImpl
-static map<const Polynomial*, PolyImpl*> polyStorage;
+//Global map to store each polynomial's head pointer
+static map<const Polynomial*, Node*> polynomialData;
 
-//Utility: safely get storage for a polynomial
-static PolyImpl* getStorage(const Polynomial* p) {
-    if (polyStorage.find(p) == polyStorage.end()) {
-        polyStorage[p] = new PolyImpl();
-    }
-    return polyStorage[p];
+//Get head pointer for a polynomial
+static Node*& getHead(const Polynomial* p) {
+    return polynomialData[p];
 }
 
-/*
-   Insert a term into the polynomial.
-   - Exponent must be non-negative
-   - Coefficient 0 is ignored
-   - If exponent already exists, coefficients are added (like terms combined)
-   - If result becomes 0, term is removed
-*/
+//Deep copy linked list
+static Node* copyList(Node* head) {
+    if (!head) return nullptr;
+    Node* newHead = new Node(head->coef, head->exp);
+    Node* currNew = newHead;
+    Node* currOld = head->next;
+    while (currOld) {
+        currNew->next = new Node(currOld->coef, currOld->exp);
+        currNew = currNew->next;
+        currOld = currOld->next;
+    }
+    return newHead;
+}
+
+//Delete linked list
+static void deleteList(Node*& head) {
+    while (head) {
+        Node* temp = head;
+        head = head->next;
+        delete temp;
+    }
+}
+
+//Insert node in descending order and combine like terms
+static void insertNode(Node*& head, int coef, int exp) {
+    if (coef == 0) return;
+
+    //Check overflow
+    if (abs((long long)coef) > numeric_limits<int>::max()) {
+        throw overflow_error("Coefficient overflow");
+    }
+
+    Node* prev = nullptr;
+    Node* curr = head;
+
+    while (curr && curr->exp > exp) {
+        prev = curr;
+        curr = curr->next;
+    }
+
+    if (curr && curr->exp == exp) {
+        long long newCoef = (long long)curr->coef + coef;
+        if (newCoef > numeric_limits<int>::max() || newCoef < numeric_limits<int>::min()) {
+            throw overflow_error("Coefficient overflow");
+        }
+        curr->coef = (int)newCoef;
+        if (curr->coef == 0) { //remove node
+            if (prev) prev->next = curr->next;
+            else head = curr->next;
+            delete curr;
+        }
+    }
+    else {
+        Node* newNode = new Node(coef, exp);
+        if (prev) {
+            newNode->next = prev->next;
+            prev->next = newNode;
+        }
+        else {
+            newNode->next = head;
+            head = newNode;
+        }
+    }
+}
+
+//Insert term into polynomial
 void Polynomial::insertTerm(int coefficient, int exponent) {
-    if (exponent < 0)
-        throw invalid_argument("Exponent must be non-negative");
-
-    if (coefficient == 0)
-        return; //skip useless terms
-
-    PolyImpl* impl = getStorage(this);
-
-    //Check for integer overflow (safe-ish guard)
-    long long newVal = (long long)impl->terms[exponent] + coefficient;
-    if (newVal > numeric_limits<int>::max() || newVal < numeric_limits<int>::min()) {
-        throw overflow_error("Coefficient overflow detected");
-    }
-
-    impl->terms[exponent] = (int)newVal;
-
-    //Remove if coefficient becomes 0
-    if (impl->terms[exponent] == 0) {
-        impl->terms.erase(exponent);
-    }
+    if (exponent < 0) throw invalid_argument("Exponent must be non-negative");
+    if (coefficient == 0) return;
+    insertNode(getHead(this), coefficient, exponent);
 }
 
-/*
-   Convert polynomial to a human-readable string.
-   - Example: 3x^4 + 2x^2 - x + 5
-   - If empty, returns "0"
-*/
+//Convert polynomial to string
 string Polynomial::toString() const {
-    PolyImpl* impl = getStorage(this);
-    if (impl->terms.empty()) return "0";
+    Node* head = getHead(this);
+    if (!head) return "0";
 
     ostringstream oss;
+    Node* curr = head;
     bool first = true;
 
-    //Iterate from largest exponent downwards
-    for (auto it = impl->terms.rbegin(); it != impl->terms.rend(); ++it) {
-        int exp = it->first;
-        int coeff = it->second;
-
-        if (coeff == 0) continue; //just in case
-
-        //Add sign
+    while (curr) {
         if (!first) {
-            oss << (coeff > 0 ? " + " : " - ");
+            oss << (curr->coef > 0 ? " + " : " - ");
         }
-        else {
-            if (coeff < 0) oss << "-";
+        else if (curr->coef < 0) {
+            oss << "-";
         }
 
-        int absCoeff = abs(coeff);
-
-        //Print coefficient
-        if (exp == 0) {
-            oss << absCoeff; //constant term
-        }
-        else {
-            if (absCoeff != 1) oss << absCoeff;// hide '1x'
-            oss << "x";
-            if (exp != 1) oss << "^" << exp;
-        }
+        int absCoef = abs(curr->coef);
+        if (absCoef != 1 || curr->exp == 0) oss << absCoef;
+        if (curr->exp > 0) oss << "x";
+        if (curr->exp > 1) oss << "^" << curr->exp;
 
         first = false;
+        curr = curr->next;
     }
-
     return oss.str();
 }
 
-/*
-   Add two polynomials and return the result.
-   - Does not modify originals
-   - Like terms combined
-*/
+//Add two polynomials
 Polynomial Polynomial::add(const Polynomial& other) const {
     Polynomial result;
-    PolyImpl* rimpl = getStorage(&result);
-    PolyImpl* a = getStorage(this);
-    PolyImpl* b = getStorage(&other);
+    Node* head1 = getHead(this);
+    Node* head2 = getHead(&other);
 
-    for (auto& kv : a->terms) {
-        rimpl->terms[kv.first] += kv.second;
-    }
-    for (auto& kv : b->terms) {
-        rimpl->terms[kv.first] += kv.second;
+    Node* curr = head1;
+    while (curr) {
+        insertNode(getHead(&result), curr->coef, curr->exp);
+        curr = curr->next;
     }
 
-    //Remove any zero terms
-    for (auto it = rimpl->terms.begin(); it != rimpl->terms.end();) {
-        if (it->second == 0) it = rimpl->terms.erase(it);
-        else ++it;
+    curr = head2;
+    while (curr) {
+        insertNode(getHead(&result), curr->coef, curr->exp);
+        curr = curr->next;
     }
 
     return result;
 }
 
-/*
-   Multiply two polynomials.
-   - (a_n x^n) * (b_m x^m) = (a_n * b_m) x^(n+m)
-   - All pairs combined
-   - Like terms merged
-*/
+//Multiply two polynomials
 Polynomial Polynomial::multiply(const Polynomial& other) const {
     Polynomial result;
-    PolyImpl* rimpl = getStorage(&result);
-    PolyImpl* a = getStorage(this);
-    PolyImpl* b = getStorage(&other);
+    Node* head1 = getHead(this);
+    Node* head2 = getHead(&other);
 
-    for (auto& kv1 : a->terms) {
-        for (auto& kv2 : b->terms) {
-            int exp = kv1.first + kv2.first;
-            long long coeffVal = (long long)kv1.second * kv2.second + rimpl->terms[exp];
-
-            if (coeffVal > numeric_limits<int>::max() || coeffVal < numeric_limits<int>::min()) {
+    for (Node* n1 = head1; n1; n1 = n1->next) {
+        for (Node* n2 = head2; n2; n2 = n2->next) {
+            long long prod = (long long)n1->coef * n2->coef;
+            if (prod > numeric_limits<int>::max() || prod < numeric_limits<int>::min()) {
                 throw overflow_error("Coefficient overflow in multiplication");
             }
-            rimpl->terms[exp] = (int)coeffVal;
+            insertNode(getHead(&result), (int)prod, n1->exp + n2->exp);
         }
-    }
-
-    //Clean up zero terms
-    for (auto it = rimpl->terms.begin(); it != rimpl->terms.end();) {
-        if (it->second == 0) it = rimpl->terms.erase(it);
-        else ++it;
     }
 
     return result;
 }
 
-/*
-   Differentiate polynomial (d/dx).
-   - Rule: d/dx (a*x^n) = (a*n)*x^(n-1)
-   - Constants vanish
-*/
+//Derivative of polynomial
 Polynomial Polynomial::derivative() const {
     Polynomial result;
-    PolyImpl* rimpl = getStorage(&result);
-    PolyImpl* impl = getStorage(this);
-
-    for (auto& kv : impl->terms) {
-        int exp = kv.first;
-        int coeff = kv.second;
-
-        if (exp > 0) {
-            long long newCoeff = (long long)coeff * exp;
-            if (newCoeff > numeric_limits<int>::max() || newCoeff < numeric_limits<int>::min()) {
+    Node* head = getHead(this);
+    for (Node* curr = head; curr; curr = curr->next) {
+        if (curr->exp != 0) {
+            long long prod = (long long)curr->coef * curr->exp;
+            if (prod > numeric_limits<int>::max() || prod < numeric_limits<int>::min()) {
                 throw overflow_error("Coefficient overflow in derivative");
             }
-            rimpl->terms[exp - 1] += (int)newCoeff;
+            insertNode(getHead(&result), (int)prod, curr->exp - 1);
         }
     }
-
     return result;
+}
+
+//Cleanup global map
+void cleanupPolynomials() {
+    for (auto& kv : polynomialData) {
+        deleteList(kv.second);
+    }
+    polynomialData.clear();
 }
