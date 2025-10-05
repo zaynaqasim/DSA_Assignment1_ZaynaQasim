@@ -1,18 +1,16 @@
-# Ignore build directories
+# Visual Studio
+.vs/
+*.user
+
+# Build output
 x64/
 Debug/
 Release/
-.vs/
-
-# Ignore intermediate/build files
-*.tlog
-*.log
-*.obj
-*.idb
+*.exe
 *.pdb
-*.ilk
-
-# Ignore user-specific files
-*.user
+*.obj
+*.log
+*.tlog
+*.idb
 *.opendb
 *.db
