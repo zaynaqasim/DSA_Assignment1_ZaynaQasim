@@ -2,35 +2,27 @@
 x64/
 Debug/
 Release/
-ipch/
 
 # Visual Studio cache/settings
 .vs/
 *.VC.db
 *.VC.VC.opendb
+*.user
+*.suo
 
 # Compiled binaries
 *.exe
-*.pdb
 *.dll
 *.obj
+*.pdb
+*.lib
 *.idb
 *.ilk
-*.lib
-*.sbr
 
-# Logs and temp
-*.log
-*.tlog
-*.user
-*.suo
-*.cache
-*.pch
-
-# Backup files
-*.tmp
-*.bak
-*.ncb
-
-# Ignore gitignore file itself (only if you accidentally named it wrong earlier)
+# Other IDE files
+CopilotIndices/
+FileContentIndex/
+copilot-chat/
+.vs/
+x64/Debug/
 .gitignore.txt
