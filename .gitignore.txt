@@ -1,0 +1,18 @@
+# Ignore build directories
+x64/
+Debug/
+Release/
+.vs/
+
+# Ignore intermediate/build files
+*.tlog
+*.log
+*.obj
+*.idb
+*.pdb
+*.ilk
+
+# Ignore user-specific files
+*.user
+*.opendb
+*.db
